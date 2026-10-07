@@ -28,15 +28,28 @@ you can rent a weapon you haven't unlocked for one match: kills with it count, a
 match for it. Prices depend on the weapon type (**Rental Prices**: Sidearm 2, SMG 3, Shotgun 3, Heavy 4, Rifle 5,
 Sniper 5 by default).
 
-A rental is used on your next match that counts, meaning one that starts after you rent and that you play with an
-unlocked agent in an allowed mode. Rent during agent select and it covers that match; rent during a match and it
-covers the next one. Unused rentals can be refunded (`/refund <weapon>` or the Shop tab). Rentals don't change what's
-in logic: the logic only ever expects weapons you've unlocked.
+A rental is used on one match that counts (played with an unlocked agent in an allowed mode), and like a weapon you
+receive, it counts from the next round that starts:
+
+- rent in the menus or in agent select, and it covers your whole next match;
+- rent between rounds, and it covers the rest of the match you're in; rent mid-round, and it starts with the next
+  round. Kills you already made with that weapon never count. With Strict enforcement, having used it before renting
+  still voids the match.
+
+Unused rentals can be refunded (`/refund <weapon>` or the Shop tab). Rentals don't change what's in logic: the logic
+only ever expects weapons you've unlocked.
 
 ## What happens when I receive an item?
 
-It takes effect immediately, even in the middle of a match: a weapon you receive mid-round can be bought next round,
-and a match counts as long as you've unlocked the agent before it ends. The client plays a sound for new unlocks.
+It takes effect right away, even in the middle of a match:
+
+- **Weapons** count from the next round that starts: one you receive between rounds counts for the round about to
+  start, and one you receive mid-round from the round after. Kills made with it before it arrived never count. The
+  client goes by when it saw the item arrive, so a weapon received while the client was closed counts from the next
+  time you connect.
+- **Agents:** a match counts as long as you've unlocked the agent before it ends.
+
+The client plays a sound for new unlocks.
 
 ## How are the stats defined?
 

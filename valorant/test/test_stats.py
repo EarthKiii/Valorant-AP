@@ -67,7 +67,7 @@ class TestComputeMatchStats(unittest.TestCase):
         self.assertEqual(stats["locked_kills"], 0)
 
     def test_locked_weapon_kills_are_dropped(self) -> None:
-        phantom_locked = lambda uuid: uuid != PHANTOM
+        phantom_locked = lambda uuid, _when: uuid != PHANTOM
         stats = compute_match_stats(make_match(ROUND_0 + ROUND_1, ["Blue", "Blue"]), ME, phantom_locked)
         self.assertEqual(stats["kills"], 7)
         self.assertEqual(stats["three_ks"], 1)  # round 0 is down to two kills
@@ -76,7 +76,7 @@ class TestComputeMatchStats(unittest.TestCase):
         self.assertEqual(stats["locked_weapons"], [PHANTOM])
 
     def test_carried_locked_weapon_is_reported(self) -> None:
-        vandal_locked = lambda uuid: uuid != VANDAL.lower()
+        vandal_locked = lambda uuid, _when: uuid != VANDAL.lower()
         stats = compute_match_stats(make_match([], ["Blue", "Red"]), ME, vandal_locked)
         self.assertEqual(stats["locked_weapons"], [VANDAL.lower()])
 
@@ -136,3 +136,15 @@ class TestComputeMatchStats(unittest.TestCase):
         self.assertEqual(overview["queue_id"], "competitive")
         self.assertEqual(overview["agent_uuid"], "add6443a-41bd-e414-f6ad-e58d267f4e95")
         self.assertTrue(overview["found"])
+
+
+class TestRoundStarts(unittest.TestCase):
+    def test_weapons_are_checked_at_the_start_of_their_round(self) -> None:
+        kills = [dict(kill(0, 4000, ME, "e1"), gameTime=9000), dict(kill(0, 6000, ME, "e2"), gameTime=11000),
+                 dict(kill(1, 2500, ME, "e3"), gameTime=40000)]
+        match = make_match(kills, ["Blue", "Blue"])
+        match["matchInfo"]["gameLengthMillis"] = 60000
+        seen = []
+        compute_match_stats(match, ME, lambda uuid, round_start: seen.append(round_start) or True)
+        # gameStartMillis is 1000: round 0 started at 1000 + 9000 - 4000, round 1 at 1000 + 40000 - 2500
+        self.assertEqual(sorted(set(seen)), [6000, 38500])

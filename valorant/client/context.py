@@ -12,7 +12,7 @@ import asyncio
 import json
 import sys
 import time
-from typing import Any, Callable, Collection, Optional
+from typing import Any, Callable, Optional
 
 from CommonClient import ClientCommandProcessor, CommonContext, logger
 from NetUtils import ClientStatus
@@ -314,8 +314,9 @@ class ValorantContext(CommonContext):
                 content.add_widget(text(f"Kingdom Credits: {view['credits']}", font_style="Title", bold=True))
                 content.add_widget(text(
                     "Rent a weapon you haven't unlocked for one match: kills with it count, and Strict enforcement "
-                    "won't void the match for it. A rental is used on your next match that counts (a match you're "
-                    "already in isn't the next one), and unused rentals can be refunded."))
+                    "won't void the match for it. Rented during a match, it counts from the next round that starts "
+                    "(never for kills you already made); otherwise it covers your next match that counts. Unused "
+                    "rentals can be refunded."))
                 if view["current"]:
                     content.add_widget(text(f"Rented for this match: {', '.join(view['current'])}", bold=True))
                 for weapon in view["pending"]:
@@ -389,7 +390,12 @@ class ValorantContext(CommonContext):
             if args.get("index", 0) > 0 and self.sounds:
                 if any(ITEM_NAMES_BY_ID.get(item.item) in (*AGENT_NAMES, *WEAPON_NAMES) for item in new_items):
                     play_sound("item")
-            asyncio.create_task(self.after_change())
+            new_weapons = [ITEM_NAMES_BY_ID[item.item] for item in new_items
+                           if ITEM_NAMES_BY_ID.get(item.item) in WEAPON_NAMES]
+            if args.get("index", 0) > 0 and new_weapons and self.session_state == "INGAME":
+                logger.info(f"Got the {', '.join(new_weapons)}: kills with {'it' if len(new_weapons) == 1 else 'them'} "
+                            f"count from the next round that starts.")
+            asyncio.create_task(self.after_change(save=self.note_received()))
 
     def load_progress(self, data: Optional[dict]) -> None:
         stored = Progress(data) if data else None
@@ -399,8 +405,26 @@ class ValorantContext(CommonContext):
             self.progress = stored or Progress(start_ms=int(time.time() * 1000))
         elif stored is not None:
             self.progress.merge(stored)
+        self.note_received()
         self.next_history_sync = 0
         asyncio.create_task(self.after_change(save=True))
+
+    def note_received(self) -> bool:
+        """Remember when items arrive: weapons only count in rounds that start after you get them."""
+        if self.progress is None:
+            return False
+        return self.progress.note_received(len(self.items_received), int(time.time() * 1000))
+
+    def weapon_received_ms(self) -> dict[str, int]:
+        """When each received weapon arrived (0 for weapons received before this was tracked)."""
+        times = (self.progress.received_ms if self.progress else None) or []
+        now_ms = int(time.time() * 1000)
+        received: dict[str, int] = {}
+        for index, item in enumerate(self.items_received):
+            name = ITEM_NAMES_BY_ID.get(item.item)
+            if name in WEAPON_NAMES and name not in received:
+                received[name] = times[index] if index < len(times) else now_ms
+        return received
 
     async def save_progress(self) -> None:
         if self.progress is not None:
@@ -460,16 +484,28 @@ class ValorantContext(CommonContext):
 
     # --- rules ----------------------------------------------------------------------------------------------
 
-    def weapon_name_allowed(self, name: str, rented: Collection[str] = ()) -> bool:
-        """Whether kills with this weapon count. `rented` are the weapons rented for the match in question."""
+    def weapon_name_allowed(self, name: str, round_start_ms: Optional[int] = None,
+                            rented: Optional[dict[str, int]] = None) -> bool:
+        """
+        Whether kills with this weapon count in a round that started at `round_start_ms`: you need to have received
+        it, or rented it (`rented`: the weapons rented for that match, with when they were bought), before the round
+        started. Without a time, received weapons count.
+        """
         settings = self.settings
         if not settings or not settings["weapon_unlocks"] or settings["weapon_enforcement"] == "off":
             return True
-        return name not in WEAPON_NAMES or name in self.unlocked() or name in rented
+        if name not in WEAPON_NAMES:
+            return True
+        received_ms = self.weapon_received_ms().get(name)
+        if received_ms is not None and (round_start_ms is None or received_ms < round_start_ms):
+            return True
+        bought_ms = (rented or {}).get(name)
+        return bought_ms is not None and round_start_ms is not None and bought_ms < round_start_ms
 
-    def weapon_uuid_allowed(self, uuid: str, rented: Collection[str] = ()) -> bool:
+    def weapon_uuid_allowed(self, uuid: str, round_start_ms: Optional[int] = None,
+                            rented: Optional[dict[str, int]] = None) -> bool:
         weapon = WEAPON_BY_UUID.get(uuid.lower())
-        return weapon is None or self.weapon_name_allowed(weapon.name, rented)
+        return weapon is None or self.weapon_name_allowed(weapon.name, round_start_ms, rented)
 
     # --- Kingdom Credits shop -------------------------------------------------------------------------------
 
@@ -512,17 +548,17 @@ class ValorantContext(CommonContext):
             return f"You've already unlocked the {weapon}."
         if weapon in self.pending_rental_weapons():
             return f"The {weapon} is already rented for your next match."
+        if self.current_match and weapon in self.progress.rented_for(self.current_match["id"]):
+            return f"The {weapon} is already rented for this match."
         price, balance = self.rental_price(weapon), self.credit_balance()
         if price > balance:
             return f"The {weapon} costs {kingdom_credits(price)} and you have {balance}."
         return ""
 
-    def rental_timing(self) -> str:
-        if self.session_state == "INGAME":
-            return "your next match (not the one you're in)"
-        if self.session_state == "PREGAME":
-            return "this match"
-        return "your next match"
+    def current_match_counts(self) -> bool:
+        match = self.current_match
+        return bool(self.session_state == "INGAME" and match and not self.match_problem(match["agent"],
+                                                                                         match["queue_id"]))
 
     async def rent_weapon(self, text: str) -> bool:
         weapon = self.find_weapon(text) if text.strip() else None
@@ -532,10 +568,18 @@ class ValorantContext(CommonContext):
             logger.info(problem)
             return False
         price = self.rental_price(weapon)
-        self.progress.rent(weapon, price, int(time.time() * 1000))
+        now_ms = int(time.time() * 1000)
+        self.progress.rent(weapon, price, now_ms)
+        if self.current_match_counts():
+            self.progress.bind_rentals(self.current_match["id"], now_ms + 1)
+            timing = "from the next round that starts in this match (not for kills you already made)"
+        elif self.session_state == "PREGAME":
+            timing = "in this match, as long as it counts"
+        else:
+            timing = "in your next match that counts"
         await self.save_progress()
-        logger.info(f"Rented the {weapon} for {kingdom_credits(price)}: kills with it count in {self.rental_timing()}, "
-                    f"as long as that match counts. {kingdom_credits(self.credit_balance())} left.")
+        logger.info(f"Rented the {weapon} for {kingdom_credits(price)}: kills with it count {timing}. "
+                    f"{kingdom_credits(self.credit_balance())} left.")
         self.last_companion_state = ""  # show it in the companion window right away
         return True
 
@@ -552,15 +596,17 @@ class ValorantContext(CommonContext):
         self.last_companion_state = ""
         return True
 
-    def use_rentals(self, match_id: str, start_ms: int, agent: Optional[str], queue_id: Optional[str]) -> set[str]:
+    def use_rentals(self, match_id: str, before_ms: int, agent: Optional[str],
+                    queue_id: Optional[str]) -> dict[str, int]:
         """
-        Weapons rented for this match. Unused rentals bought before it started are used on it, if it counts
-        (rentals aren't spent on matches that wouldn't count anyway).
+        Weapons rented for this match, with when they were bought. Unused rentals bought before `before_ms` (the
+        match's end, or now while it's running) are used on it if it counts: rentals aren't spent on matches that
+        wouldn't count anyway. Kills with them only count after the purchase.
         """
         if not self.progress or not match_id:
-            return set()
-        if self.rental_prices is not None and start_ms and not self.match_problem(agent, queue_id):
-            bound = self.progress.bind_rentals(match_id, start_ms)
+            return {}
+        if self.rental_prices is not None and before_ms and not self.match_problem(agent, queue_id):
+            bound = self.progress.bind_rentals(match_id, before_ms)
             if bound:
                 logger.info(f"Using your rental: {', '.join(bound)} count{'s' if len(bound) == 1 else ''} "
                             f"this match.")
@@ -647,9 +693,15 @@ class ValorantContext(CommonContext):
         if overview["start_ms"] and overview["start_ms"] < self.progress.start_ms:
             return False
         agent = AGENT_BY_UUID.get(overview["agent_uuid"])
-        rented = self.use_rentals(match_id, overview["start_ms"], agent.name if agent else None, overview["queue_id"])
-        stats = compute_match_stats(details, self.riot.puuid, lambda uuid: self.weapon_uuid_allowed(uuid, rented),
-                                    self.settings["trade_window_ms"])
+        start_ms = overview["start_ms"]
+        rented = self.use_rentals(match_id, start_ms + overview["length_ms"], agent.name if agent else None,
+                                  overview["queue_id"])
+
+        def allowed(uuid: str, round_start_ms: Optional[int]) -> bool:
+            # Without a time, assume the match's start: weapons gained mid-match never cover it.
+            return self.weapon_uuid_allowed(uuid, round_start_ms if round_start_ms is not None else start_ms, rented)
+
+        stats = compute_match_stats(details, self.riot.puuid, allowed, self.settings["trade_window_ms"])
         map_name = map_display_name(overview["map"])
         record = self.build_record(agent.name if agent else None, overview["queue_id"], map_name, stats, "official",
                                    True, overview["start_ms"])
@@ -847,6 +899,7 @@ class ValorantContext(CommonContext):
         if problem:
             logger.warning(f"Match started on {where} - it won't count: {problem}.")
         else:
+            # Unused rentals go to this match; kills with them only count after they were bought.
             if self.tracking_ready() and self.use_rentals(match_id, int(time.time() * 1000),
                                                           self.current_match["agent"], queue_id):
                 await self.save_progress()
@@ -917,7 +970,8 @@ class ValorantContext(CommonContext):
         if not same_match:
             agent, queue_id = live.agent, live.queue_guess()
         rented = self.progress.rented_for(self.current_match["id"] if same_match else self.live_match_id())
-        stats = live.stats(lambda name: self.weapon_name_allowed(name, rented), self.settings["trade_window_ms"])
+        stats = live.stats(lambda name, round_start_ms: self.weapon_name_allowed(name, round_start_ms, rented),
+                           self.settings["trade_window_ms"])
         map_name = self.current_match["map"] if same_match else map_display_name(live.map)
         return self.build_record(agent, queue_id, map_name, stats, "live", live.ended, live.started_ms)
 
@@ -999,7 +1053,7 @@ class ValorantContext(CommonContext):
         weapons_are_items = self.settings.get("weapon_unlocks", True)
         rented = set(self.pending_rental_weapons())
         if self.current_match:
-            rented |= self.progress.rented_for(self.current_match["id"])
+            rented.update(self.progress.rented_for(self.current_match["id"]))
         weapons = [{"name": weapon.name, "uuid": weapon.uuid, "category": weapon.category,
                     "unlocked": weapon is CLASSIC or not weapons_are_items or weapon.name in unlocked,
                     "rented": weapon.name in rented}

@@ -74,9 +74,26 @@ class Progress:
         # Weapon rentals bought with Kingdom Credits, by id:
         # {"weapon": "Vandal", "price": 4, "bought_ms": ..., "match": None | match id, "refunded": bool}
         self.rentals: dict[str, dict] = {key: dict(value) for key, value in (data.get("rentals") or {}).items()}
+        # When each received item arrived (Unix ms), by its position in the received-items list; None until noted.
+        received = data.get("received")
+        self.received_ms: Optional[list[int]] = [int(ms) for ms in received] if received is not None else None
 
     def to_json(self) -> dict:
-        return {"version": 1, "start_ms": self.start_ms, "matches": self.matches, "rentals": self.rentals}
+        return {"version": 1, "start_ms": self.start_ms, "matches": self.matches, "rentals": self.rentals,
+                "received": self.received_ms}
+
+    def note_received(self, count: int, now_ms: int) -> bool:
+        """
+        Record when newly received items arrived. The first time this runs, items already received count as received
+        long ago, so slots tracked before this existed keep counting their weapons. Returns whether anything changed.
+        """
+        if self.received_ms is None:
+            self.received_ms = [0] * count
+            return True
+        if len(self.received_ms) < count:
+            self.received_ms += [now_ms] * (count - len(self.received_ms))
+            return True
+        return False
 
     def has_official(self, match_id: str) -> bool:
         return self.matches.get(match_id, {}).get("source") == "official"
@@ -172,6 +189,11 @@ class Progress:
             mine = self.matches.get(match_id)
             if mine is None or (record.get("source") == "official" and mine.get("source") != "official"):
                 self.matches[match_id] = record
+        if other.received_ms is not None:
+            mine = self.received_ms or []
+            earliest = [min(a, b) for a, b in zip(mine, other.received_ms)]
+            longer = mine if len(mine) > len(other.received_ms) else other.received_ms
+            self.received_ms = earliest + longer[len(earliest):]
         for rental_id, rental in other.rentals.items():
             mine = self.rentals.get(rental_id)
             if mine is None:
@@ -183,7 +205,8 @@ class Progress:
                 mine["refunded"] = True
 
     # --- weapon rentals (the Kingdom Credits shop) ---------------------------------------------------------------
-    # A rental covers the first counted match that starts after it was bought.
+    # A rental is used on the first counted match still running when it's bought (or starting after), and counts from
+    # the first round that starts after the purchase: rented between rounds, it covers the rest of that match.
 
     def rent(self, weapon: str, price: int, bought_ms: int) -> str:
         rental_id = uuid.uuid4().hex
@@ -208,18 +231,19 @@ class Progress:
         self.rentals[rental_id]["refunded"] = True
         return True
 
-    def bind_rentals(self, match_id: str, start_ms: int) -> list[str]:
-        """Use every rental bought before this match started on it. Returns the newly covered weapons."""
+    def bind_rentals(self, match_id: str, before_ms: int) -> list[str]:
+        """Use every unused rental bought before `before_ms` on this match. Returns the newly covered weapons."""
         bound = []
         for rental in self.pending_rentals().values():
-            if rental["bought_ms"] <= start_ms:
+            if rental["bought_ms"] < before_ms:
                 rental["match"] = match_id
                 bound.append(rental["weapon"])
         return bound
 
-    def rented_for(self, match_id: Optional[str]) -> set[str]:
-        """Weapons rented for this match."""
-        if not match_id:
-            return set()
-        return {rental["weapon"] for rental in self.rentals.values()
-                if rental.get("match") == match_id and not rental.get("refunded")}
+    def rented_for(self, match_id: Optional[str]) -> dict[str, int]:
+        """Weapons rented for this match, with when they were bought: they count in rounds that start later."""
+        rented: dict[str, int] = {}
+        for rental in self.rentals.values():
+            if match_id and rental.get("match") == match_id and not rental.get("refunded"):
+                rented[rental["weapon"]] = min(rental["bought_ms"], rented.get(rental["weapon"], rental["bought_ms"]))
+        return rented

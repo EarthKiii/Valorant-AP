@@ -82,6 +82,7 @@ class LiveTracker:
         self.my_kills: list[LiveKill] = []
         self.ally_deaths: list[tuple[int, int, str]] = []  # (round, ts, killer) - enemies killing our teammates
         self.clutch_rounds: set[int] = set()
+        self.round_starts: dict[int, int] = {}  # when each round's combat began (else when the round was announced)
         self.won_rounds: set[int] = set()
         self.kill_counter = 0
         self.deaths = 0
@@ -225,10 +226,13 @@ class LiveTracker:
             number = _int(value)
             if number != self.round:
                 self._new_round(number)
+                self.round_starts.setdefault(number, ts)
                 return {"round"}
             return set()
         if key == "round_phase":
             self.round_phase = str(value or "")
+            if self.round_phase == "combat" and self.round:
+                self.round_starts[self.round] = ts
             if self.round_phase == "game_end":
                 self.ended = True
                 return {"match_end"}
@@ -350,13 +354,17 @@ class LiveTracker:
 
     # --- results ------------------------------------------------------------------------------------------
 
-    def _weapon_ok(self, weapon: Optional[str], weapon_allowed: Callable[[str], bool]) -> bool:
-        return weapon is None or weapon in ALWAYS_ALLOWED_WEAPONS or weapon_allowed(weapon)
+    def _weapon_ok(self, kill: LiveKill, weapon_allowed: Callable[[str, Optional[int]], bool]) -> bool:
+        if kill.weapon is None or kill.weapon in ALWAYS_ALLOWED_WEAPONS:
+            return True
+        return weapon_allowed(kill.weapon, self.round_starts.get(kill.round, kill.ts))
 
-    def stats(self, weapon_allowed: Callable[[str], bool] = lambda _name: True, trade_window_ms: int = 5000) -> dict:
+    def stats(self, weapon_allowed: Callable[[str, Optional[int]], bool] = lambda _name, _when: True,
+              trade_window_ms: int = 5000) -> dict:
         """Current stats for this match, in the same shape as the official ones (minus score, which GEP lacks)."""
-        valid = [kill for kill in self.my_kills if self._weapon_ok(kill.weapon, weapon_allowed)]
-        locked = [kill for kill in self.my_kills if not self._weapon_ok(kill.weapon, weapon_allowed)]
+        allowed = [self._weapon_ok(kill, weapon_allowed) for kill in self.my_kills]  # one check per kill
+        valid = [kill for kill, ok in zip(self.my_kills, allowed) if ok]
+        locked = [kill for kill, ok in zip(self.my_kills, allowed) if not ok]
         kills = len(valid)
         if not self.my_kills and self.kill_counter:
             kills = self.kill_counter  # we couldn't recognise ourselves in the kill feed; use the plain counter

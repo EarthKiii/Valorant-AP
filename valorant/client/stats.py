@@ -8,8 +8,9 @@ VAL-MATCH-V1 format (timeSinceRoundStartMillis/timeSinceGameStartMillis).
 from collections import defaultdict
 from typing import Any, Callable, Optional
 
-# Called with a lowercase weapon UUID; returns whether kills with that weapon may count.
-WeaponFilter = Callable[[str], bool]
+# Called with a lowercase weapon UUID and when the round it was used in started (Unix ms, None if unknown); returns
+# whether kills with that weapon count in that round.
+WeaponFilter = Callable[[str, Optional[int]], bool]
 
 COUNT_FIELDS = ("kills", "deaths", "assists", "trades", "clutches", "aces", "three_ks", "wins", "score", "rounds")
 
@@ -36,6 +37,22 @@ def _kill_time(kill: dict) -> int:
         if kill.get(key) is not None:
             return int(kill[key])
     return 0
+
+
+def _game_time(kill: dict) -> Optional[int]:
+    """Milliseconds from the start of the match to the kill."""
+    for key in ("gameTime", "timeSinceGameStartMillis"):
+        if kill.get(key) is not None:
+            return int(kill[key])
+    return None
+
+
+def _round_time(kill: dict) -> Optional[int]:
+    """Milliseconds from the start of the kill's round (its combat phase) to the kill."""
+    for key in ("roundTime", "timeSinceRoundStartMillis"):
+        if kill.get(key) is not None:
+            return int(kill[key])
+    return None
 
 
 def _collect_kills(match: dict) -> list[dict]:
@@ -70,6 +87,7 @@ def match_overview(match: dict, puuid: str) -> dict:
         "queue_id": _lower(info.get("queueID", info.get("queueId"))),
         "map": info.get("mapId") or "",
         "start_ms": int(info.get("gameStartMillis") or 0),
+        "length_ms": int(info.get("gameLengthMillis") or 0),
         "completed": bool(info.get("isCompleted", True)),
         "agent_uuid": _lower(me.get("characterId")),
         "found": bool(me),
@@ -84,7 +102,7 @@ def find_player(match: dict, puuid: str) -> Optional[dict]:
 def compute_match_stats(
     match: dict,
     puuid: str,
-    weapon_allowed: WeaponFilter = lambda _uuid: True,
+    weapon_allowed: WeaponFilter = lambda _uuid, _when: True,
     trade_window_ms: int = 5000,
 ) -> Optional[dict]:
     """
@@ -92,7 +110,8 @@ def compute_match_stats(
     the Performance Score).
     Kills made with a weapon rejected by `weapon_allowed` are left out of
     every stat (kills, multi-kills, trades, and the clutch for that round) and reported in `locked_kills`.
-    `locked_weapons` lists every locked weapon the player killed with or carried into a round.
+    `locked_weapons` lists every locked weapon the player killed with or carried into a round. Weapons are checked
+    at the start of the round they were used in (worked out from the kills' times).
     """
     me = find_player(match, puuid)
     if me is None:
@@ -103,6 +122,23 @@ def compute_match_stats(
     round_results = match.get("roundResults") or []
     # Deathmatch and friends are a single "round": multi-kills, trades and clutches are meaningless there.
     round_based = len(round_results) >= 2
+    info = match.get("matchInfo") or {}
+    start_ms = int(info.get("gameStartMillis") or 0)
+    end_ms = start_ms + int(info.get("gameLengthMillis") or 0) if start_ms and info.get("gameLengthMillis") else None
+
+    def at(game_time: Optional[int]) -> Optional[int]:
+        return start_ms + game_time if start_ms and game_time is not None else None
+
+    kills_by_round: dict[int, list[dict]] = defaultdict(list)
+    for kill in _collect_kills(match):
+        kills_by_round[kill["round"]].append(kill)
+    # When each round started: a kill's time in the match minus its time in the round. Rounds without timed kills
+    # fall back to the match's end for carried weapons: that only affects Strict enforcement, as they have no kills.
+    round_starts: dict[int, Optional[int]] = {}
+    for number, kills in kills_by_round.items():
+        starts = [_game_time(kill) - _round_time(kill) for kill in kills
+                  if _game_time(kill) is not None and _round_time(kill) is not None]
+        round_starts[number] = at(min(starts)) if starts else None
 
     winners: dict[int, Any] = {}
     participants: dict[int, set[str]] = {}
@@ -116,12 +152,8 @@ def compute_match_stats(
             participants[round_number].add(subject)
             if subject == puuid:
                 carried = _lower((player_stats.get("economy") or {}).get("weapon"))
-                if carried and not weapon_allowed(carried):
+                if carried and not weapon_allowed(carried, round_starts.get(round_number) or end_ms):
                     locked_weapons.add(carried)
-
-    kills_by_round: dict[int, list[dict]] = defaultdict(list)
-    for kill in _collect_kills(match):
-        kills_by_round[kill["round"]].append(kill)
 
     stats = {field: 0 for field in COUNT_FIELDS}
     stats["locked_kills"] = 0
@@ -135,7 +167,7 @@ def compute_match_stats(
         valid = []
         for kill in mine:
             weapon = kill_weapon(kill)
-            if weapon and not weapon_allowed(weapon):
+            if weapon and not weapon_allowed(weapon, round_starts.get(round_number) or at(_game_time(kill))):
                 locked_weapons.add(weapon)
                 stats["locked_kills"] += 1
             else:

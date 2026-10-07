@@ -67,7 +67,7 @@ class TestLiveTracker(unittest.TestCase):
         self.kill_feed(6000, "Doom", "P5", True, False, "TX_Hud_Operator")
         self.kill_feed(7000, "Doom", "P6", True, False, "TX_Hud_Pistol_Glock_S")  # Classic is always fine
         self.send(info("match_info", "score", json.dumps({"won": 0, "lost": 1})))
-        stats = self.live.stats(weapon_allowed=lambda name: name != "Operator")
+        stats = self.live.stats(weapon_allowed=lambda name, _when: name != "Operator")
         self.assertEqual(stats["kills"], 1)
         self.assertEqual(stats["locked_kills"], 1)
         self.assertEqual(stats["locked_weapons"], ["Operator"])
@@ -127,3 +127,18 @@ class TestAgentSelect(unittest.TestCase):
         self.assertIsNone(live.pick)  # a new agent select starts empty
         live.handle({"kind": "game_exit"})
         self.assertEqual((live.scene, live.pick), ("", None))
+
+
+class TestLiveRoundStarts(unittest.TestCase):
+    def test_weapons_are_checked_at_the_start_of_combat(self) -> None:
+        live = LiveTracker(LIVE_WEAPON_IDS, AGENT_CODENAMES)
+        live.handle(info("me", "player_name", "Doom"))
+        live.handle(event("match_info", "match_start", "", ts=1000))
+        live.handle(info("match_info", "round_number", "1", ts=2000))
+        live.handle(info("match_info", "round_phase", "combat", ts=32000))
+        feed_entry = {"attacker": "Doom", "victim": "P6", "is_attacker_teammate": True, "is_victim_teammate": False,
+                      "weapon": "TX_Hud_Volcano"}
+        live.handle(info("match_info", "kill_feed", json.dumps(feed_entry), ts=40000))
+        seen = []
+        live.stats(lambda name, round_start: seen.append((name, round_start)) or True)
+        self.assertEqual(seen, [("Vandal", 32000)])

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -8,7 +9,7 @@ from NetUtils import NetworkItem
 
 from ..client.context import ValorantCommandProcessor, ValorantContext, play_sound
 from ..client.tracker import Progress
-from ..data import DEFAULT_RENTAL_PRICES, ITEM_IDS, location_id
+from ..data import AGENT_BY_NAME, DEFAULT_RENTAL_PRICES, ITEM_IDS, location_id
 from .test_stats import VANDAL, kill, make_match
 
 
@@ -229,3 +230,103 @@ class TestWeaponShop(unittest.TestCase):
         self.assertEqual(matches["m1"]["stats"]["kills"], 2)
         self.assertFalse(matches["m2"]["counted"])  # the rental was used up: the Vandal is locked again
         self.assertIn("locked weapons (Vandal)", matches["m2"]["reason"])
+
+    async def start_match(self, ctx: ValorantContext) -> None:
+        """The client noticing match m1 in progress (when it starts, or later e.g. after a restart)."""
+        match = {"Players": [{"Subject": "a1", "CharacterID": AGENT_BY_NAME["Jett"].uuid}],
+                 "MatchmakingData": {"QueueID": "competitive"}, "MapID": "/Game/Maps/Bonsai/Bonsai"}
+        ctx.riot.coregame_match_id = lambda: "m1"
+        ctx.riot.coregame_match = lambda _match_id: match
+        await ctx.on_match_started(None)
+
+    def between_rounds_match(self) -> dict:
+        """m1: starts at 1000, a Vandal kill at 3000 (round 1) and another at 21000 (round 6)."""
+        kills = [dict(kill(0, 1000, "a1", "e1", VANDAL), gameTime=2000),
+                 dict(kill(5, 1000, "a1", "e2", VANDAL), gameTime=20000)]
+        match = make_match(kills, ["Blue"] * 6)
+        match["matchInfo"]["gameLengthMillis"] = 60000
+        return match
+
+    def test_rented_between_rounds_counts_for_the_rest_of_the_match(self) -> None:
+        async def run(enforcement: str) -> dict:
+            ctx = self.make_context(credits=5)
+            ctx.settings["weapon_enforcement"] = enforcement
+            ctx.progress.rent("Vandal", 5, bought_ms=5000)  # between rounds 1 and 6 of m1
+            await self.start_match(ctx)  # e.g. the client restarting mid-match
+            await ctx.process_official(self.between_rounds_match())
+            record = dict(ctx.progress.matches["m1"], pending=ctx.pending_rental_weapons())
+            await ctx.shutdown()
+            return record
+
+        with self.assertLogs("Client", "INFO"):
+            kills_only, strict = asyncio.run(run("kills_only")), asyncio.run(run("strict"))
+        # Only the kill after the purchase counts; the rental is used up by this match.
+        self.assertEqual((kills_only["counted"], kills_only["stats"]["kills"], kills_only["pending"]), (True, 1, []))
+        # Strict: the Vandal was used before it was rented, so the match doesn't count.
+        self.assertFalse(strict["counted"])
+
+    def test_renting_during_a_match_counts_from_the_next_round(self) -> None:
+        async def run() -> tuple:
+            ctx = self.make_context(credits=5)
+            ctx.session_state = "INGAME"
+            await self.start_match(ctx)
+            await ctx.rent_weapon("Vandal")  # mid-match
+            rented = ctx.progress.rented_for("m1")
+            now_ms = int(time.time() * 1000)
+            result = (rented, ctx.pending_rental_weapons(),
+                      ctx.weapon_name_allowed("Vandal", now_ms - 60000, rented),  # a round that started earlier
+                      ctx.weapon_name_allowed("Vandal", now_ms + 60000, rented))  # the next round
+            await ctx.shutdown()
+            return result
+
+        with self.assertLogs("Client", "INFO") as logs:
+            rented, pending, earlier, later = asyncio.run(run())
+        self.assertEqual((list(rented), pending, earlier, later), (["Vandal"], [], False, True))
+        self.assertTrue(any("from the next round that starts" in line for line in logs.output))
+
+    def test_rental_bought_in_agent_select_covers_the_whole_match(self) -> None:
+        async def run() -> tuple:
+            ctx = self.make_context(credits=5)
+            ctx.progress.rent("Vandal", 5, bought_ms=500)
+            await self.start_match(ctx)
+            await ctx.process_official(self.between_rounds_match())
+            result = (ctx.progress.rented_for("m1"), ctx.progress.matches["m1"]["stats"]["kills"])
+            await ctx.shutdown()
+            return result
+
+        with self.assertLogs("Client", "INFO"):
+            rented, kills = asyncio.run(run())
+        self.assertEqual((rented, kills), ({"Vandal": 500}, 2))
+
+
+class TestReceivedWeapons(TestWeaponShop):
+    """Weapons sent by other players count from the first round that starts after they arrive."""
+
+    def test_weapon_received_mid_match_counts_from_the_next_round(self) -> None:
+        async def run() -> tuple:
+            ctx = self.make_context(credits=0)
+            ctx.settings["weapon_enforcement"] = "kills_only"
+            ctx.note_received()  # Jett, long before the match
+            ctx.items_received.append(NetworkItem(ITEM_IDS["Vandal"], 0, 2, 0))
+            ctx.progress.note_received(len(ctx.items_received), 5000)  # the Vandal arrives between rounds 1 and 6
+            await ctx.process_official(self.between_rounds_match())
+            result = ctx.progress.matches["m1"]["stats"]["kills"]
+            await ctx.shutdown()
+            return result
+
+        with self.assertLogs("Client", "INFO"):
+            kills = asyncio.run(run())
+        self.assertEqual(kills, 1)  # round 6 counts, round 1 (before the Vandal arrived) doesn't
+
+    def test_weapons_owned_before_tracking_keep_counting(self) -> None:
+        async def run() -> int:
+            ctx = self.make_context(credits=0)
+            ctx.items_received.append(NetworkItem(ITEM_IDS["Vandal"], 0, 2, 0))
+            ctx.note_received()  # a slot from before this was tracked: everything it has counts as long owned
+            await ctx.process_official(self.between_rounds_match())
+            result = ctx.progress.matches["m1"]["stats"]["kills"]
+            await ctx.shutdown()
+            return result
+
+        with self.assertLogs("Client", "INFO"):
+            self.assertEqual(asyncio.run(run()), 2)

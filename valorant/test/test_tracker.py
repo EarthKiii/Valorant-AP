@@ -159,17 +159,17 @@ class TestRentals(unittest.TestCase):
         progress = Progress(start_ms=1)
         progress.rent("Vandal", 4, bought_ms=1000)
         self.assertEqual(progress.spent(), 4)
-        self.assertEqual(progress.bind_rentals("before", start_ms=900), [])  # started before the purchase
-        self.assertEqual(progress.bind_rentals("next", start_ms=1500), ["Vandal"])
-        self.assertEqual(progress.bind_rentals("after", start_ms=2000), [])  # already used
-        self.assertEqual(progress.rented_for("next"), {"Vandal"})
-        self.assertEqual(progress.rented_for("after"), set())
+        self.assertEqual(progress.bind_rentals("before", before_ms=900), [])  # ended before the purchase
+        self.assertEqual(progress.bind_rentals("next", before_ms=1500), ["Vandal"])
+        self.assertEqual(progress.bind_rentals("after", before_ms=2000), [])  # already used
+        self.assertEqual(progress.rented_for("next"), {"Vandal": 1000})  # kills after the purchase count
+        self.assertEqual(progress.rented_for("after"), {})
         self.assertEqual(progress.pending_rentals(), {})
 
     def test_refund_only_unused_rentals(self) -> None:
         progress = Progress(start_ms=1)
         used = progress.rent("Vandal", 4, bought_ms=1000)
-        progress.bind_rentals("m1", start_ms=1500)
+        progress.bind_rentals("m1", before_ms=1500)
         unused = progress.rent("Ghost", 1, bought_ms=2000)
         self.assertFalse(progress.refund(used))
         self.assertTrue(progress.refund(unused))
@@ -181,13 +181,29 @@ class TestRentals(unittest.TestCase):
         bought = first.rent("Vandal", 4, bought_ms=1000)
         refunded = first.rent("Ghost", 1, bought_ms=1600)  # bought after m1 started
         second = Progress(first.to_json())
-        first.bind_rentals("m1", start_ms=1500)  # this copy used the Vandal...
+        first.bind_rentals("m1", before_ms=1500)  # this copy used the Vandal...
         second.refund(refunded)  # ...and that one refunded the Ghost
         second.rent("Odin", 3, bought_ms=1200)
         merged = Progress(second.to_json())
         merged.merge(first)
-        self.assertEqual(merged.rented_for("m1"), {"Vandal"})  # a rental used in a match stays paid
+        self.assertEqual(merged.rented_for("m1"), {"Vandal": 1000})  # a rental used in a match stays paid
         self.assertTrue(merged.rentals[refunded]["refunded"])
         self.assertEqual([r["weapon"] for r in merged.pending_rentals().values()], ["Odin"])
         self.assertEqual(merged.spent(), 7)
         self.assertEqual(merged.rentals[bought]["match"], "m1")
+
+
+class TestReceivedTimes(unittest.TestCase):
+    def test_noted_saved_and_merged(self) -> None:
+        progress = Progress(start_ms=1)
+        self.assertTrue(progress.note_received(3, now_ms=1000))
+        self.assertEqual(progress.received_ms, [0, 0, 0])  # already owned when first noted
+        self.assertTrue(progress.note_received(5, now_ms=2000))
+        self.assertFalse(progress.note_received(5, now_ms=3000))  # a reconnect resends the same items
+        self.assertEqual(progress.received_ms, [0, 0, 0, 2000, 2000])
+        other = Progress(progress.to_json())
+        other.note_received(6, now_ms=4000)
+        other.received_ms[3] = 2500
+        progress.merge(other)
+        self.assertEqual(progress.received_ms, [0, 0, 0, 2000, 2000, 4000])  # earliest sighting wins
+        self.assertIsNone(Progress({"matches": {}}).received_ms)  # older saves have none yet
