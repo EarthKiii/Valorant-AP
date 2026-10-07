@@ -1,0 +1,51 @@
+/* The agent-select overlay: one small pill on a transparent, click-through window. Static on purpose (no
+   animations, shadows or blur), so it never repaints while the game runs. */
+
+:root {
+  --panel: rgba(15, 25, 35, 0.9);
+  --text: #ece8e1;
+  --muted: #b3bcc5;
+  --accent: #ff4655;
+  --done: #3ddc97;
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  color: var(--text);
+  font: 14px/1.35 "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 16px);
+  margin-top: 6px;
+  padding: 8px 16px 8px 12px;
+  border-left: 3px solid var(--done);
+  border-radius: 6px;
+  background: var(--panel);
+}
+.pill.warn { border-left-color: var(--accent); }
+.pill.info { border-left-color: var(--muted); }
+
+.icon { flex: none; width: 18px; height: 18px; fill: var(--done); }
+.warn .icon { fill: var(--accent); }
+.info .icon { fill: var(--muted); }
+
+.text { display: grid; min-width: 0; }
+.title { font-weight: 700; }
+.warn .title { color: var(--accent); }
+.detail { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

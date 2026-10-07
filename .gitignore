@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.apworld
+companion/node_modules/
+companion/dist/
+companion/.env

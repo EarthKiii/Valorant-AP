@@ -1,0 +1,25 @@
+{
+  "name": "valorant-ap-companion",
+  "version": "0.1.0",
+  "description": "Companion app for the Archipelago VALORANT client: live game events, a progress window and an in-game agent-select overlay.",
+  "main": "main.js",
+  "private": true,
+  "license": "MIT",
+  "overwolf": {
+    "packages": [
+      "gep",
+      "overlay"
+    ]
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "start": "node scripts/build.mjs && node start.js",
+    "pack": "node scripts/pack.js"
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron": "^42.11.4",
+    "esbuild": "^0.28.2",
+    "svelte": "^5.57.1"
+  }
+}

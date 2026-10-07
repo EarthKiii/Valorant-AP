@@ -1,0 +1,318 @@
+﻿# Q. What is this file?
+# A. This file contains options which allow you to configure your multiworld experience while allowing
+#    others to play how they want as well.
+#
+# Q. How do I use it?
+# A. The options in this file are weighted. This means the higher number you assign to a value, the
+#    more chances you have for that option to be chosen. For example, an option like this:
+#
+#    map_shuffle:
+#      on: 5
+#      off: 15
+#
+#    Means you have 5 chances for map shuffle to occur, and 15 chances for map shuffle to be turned
+#    off.
+#
+# Q. I've never seen a file like this before. What characters am I allowed to use?
+# A. This is a .yaml file. You are allowed to use most characters.
+#    To test if your yaml is valid or not, you can use this website:
+#        http://www.yamllint.com/
+#    You can also verify that your Archipelago options are valid at this site:
+#        https://archipelago.gg/check
+
+# Your name in-game, limited to 16 characters.
+#     {player} will be replaced with the player's slot number.
+#     {PLAYER} will be replaced with the player's slot number, if that slot number is greater than 1.
+#     {number} will be replaced with the counter value of the name.
+#     {NUMBER} will be replaced with the counter value of the name, if the counter value is greater than 1.
+name: YourName
+
+# Used to describe your yaml. Useful if you have multiple files.
+description: Default Valorant Template
+
+game: Valorant
+requires:
+  version: 0.6.8 # Version of Archipelago required for this yaml to work as expected.
+  game:
+    Valorant: 0.6.0 # Version of the world required for this yaml to work as expected.
+
+Valorant:
+  ################
+  # Game Options #
+  ################
+  progression_balancing:
+    # A system that can move progression earlier, to try and prevent the player from getting stuck and bored early.
+    # 
+    # A lower setting means more getting stuck. A higher setting means less getting stuck.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 99
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-99: 0 # random value between 0 and 99
+    disabled: 0 # equivalent to 0
+    normal: 50 # equivalent to 50
+    extreme: 0 # equivalent to 99
+
+  accessibility:
+    # Set rules for reachability of your items/locations.
+    # 
+    # **Full:** ensure everything can be reached and acquired.
+    # 
+    # **Minimal:** ensure what is needed to reach your goal can be acquired.
+    full: 50
+    minimal: 0
+
+  ####################
+  # Agents & Weapons #
+  ####################
+  agent_pool:
+    # Agents that may appear in this world. Only list agents you actually own in VALORANT -
+    # the game won't let you pick the others, so their checks would be impossible.
+    ['Neon', 'Sova', 'Miks', 'Breach', 'Reyna', 'Fade', 'Gekko', 'Waylay', 'KAY/O', 'Brimstone', 'Vyse', 'Chamber', 'Yoru', 'Veto', 'Killjoy', 'Omen', 'Raze', 'Clove', 'Deadlock', 'Jett', 'Harbor', 'Viper', 'Cypher', 'Tejo', 'Sage', 'Iso', 'Astra', 'Skye', 'Phoenix']
+
+  agent_count:
+    # How many agents (picked at random from the Agent Pool) are part of this world.
+    # Every agent gets its own set of checks, so this is the main length setting.
+    # Agents given through Start Inventory are always included.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 29
+    6: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-29: 0 # random value between 1 and 29
+
+  starting_agents:
+    # How many of this world's agents you start with unlocked.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 5
+    3: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-5: 0 # random value between 1 and 5
+
+  weapon_unlocks:
+    # Weapons are items. Until you receive a weapon, kills made with it don't count.
+    # The Classic, the knife and agent abilities are always allowed.
+    'false': 0
+    'true': 50
+
+  starting_weapons:
+    # How many random primary weapons (SMGs, shotguns, rifles, snipers, heavies) you start with.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 0
+    # Maximum value is 14
+    1: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-0-14: 0 # random value between 0 and 14
+
+  weapon_enforcement:
+    # How the client treats weapons you haven't unlocked yet.
+    # Kills Only: kills made with a locked weapon are ignored (for kills, multi-kills, trades, clutches and K/D).
+    # Strict: using a locked weapon at all (buying it or getting a kill with it) voids the whole match.
+    # Off: honor system - nothing is checked.
+    'off': 0
+    kills_only: 50
+    strict: 0
+
+  weapon_shop:
+    # Kingdom Credits (the filler item) become a currency. In the client's Shop tab (or with /rent) you can spend them
+    # to rent a weapon you haven't unlocked for your next match: kills with it count, and Strict enforcement doesn't
+    # void the match for it. Only matters with Weapon Unlocks on and Weapon Enforcement not Off.
+    'false': 0
+    'true': 50
+
+  rental_prices:
+    # Kingdom Credits it costs to rent a weapon for one match, by weapon type: Sidearm, SMG, Shotgun, Rifle, Sniper and
+    # Heavy (whole numbers from 0 to 99; types left out keep their default price).
+    Heavy: 4
+    Rifle: 5
+    SMG: 3
+    Shotgun: 3
+    Sidearm: 2
+    Sniper: 5
+
+  weapon_logic:
+    # How many primary weapons the logic expects you to have before a check is "in logic".
+    # Standard: tier 1 of Kills, Assists, Trades, K/D, Wins and Performance only needs the agent. Each higher tier
+    # needs one more primary weapon, and Clutches, Aces and 3Ks start at one weapon.
+    # Relaxed: only the agent is ever required.
+    relaxed: 0
+    standard: 50
+
+  ##########
+  # Checks #
+  ##########
+  progress_mode:
+    # Cumulative: stats add up over every match you play with an agent (25 kills over three matches counts as 25).
+    # Single Match: each threshold must be reached within one match.
+    # K/D and Performance Score always use your best single match, and Wins always add up, regardless of this
+    # setting.
+    cumulative: 50
+    single_match: 0
+
+  kill_thresholds:
+    # Kill counts that each send a check, per agent. One check per entry (max 10). Empty list = no kill checks.
+    [10, 15, 20]
+
+  assist_thresholds:
+    # Assist counts that each send a check, per agent.
+    [5, 10, 15]
+
+  trade_thresholds:
+    # Trade counts that each send a check, per agent.
+    # A trade is killing the enemy who killed one of your teammates, within the Trade Window.
+    [2, 5, 10]
+
+  short_mode_thresholds:
+    # Swiftplay and Spike Rush matches are much shorter than a full game. In those two modes, the Kill, Assist and
+    # Trade thresholds only need this percentage (rounded up): at 75, a 20-kill check needs 15 kills there.
+    # 100 turns this off. Kills, assists and trades from those modes count extra towards the regular thresholds
+    # (x1.33 at 75), so mixing modes adds up fairly.
+    # The lowered thresholds are listed in the spoiler log, in the client and in the companion window.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 25
+    # Maximum value is 100
+    75: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-25-100: 0 # random value between 25 and 100
+
+  clutch_thresholds:
+    # Clutch counts that each send a check, per agent.
+    # A clutch is winning a round after being your team's last player alive.
+    [1, 2]
+
+  ace_thresholds:
+    # Ace counts (5 kills in one round) that each send a check, per agent.
+    [1]
+
+  three_k_thresholds:
+    # 3K counts (rounds where you got 3 or more kills) that each send a check, per agent.
+    [1, 2]
+
+  kd_thresholds:
+    # K/D ratios that each send a check, per agent, when you finish a match at or above them.
+    [1.0, 1.5]
+
+  win_thresholds:
+    # Number of matches won with the agent that each send a check. Always counted across matches.
+    [1, 2]
+
+  performance_thresholds:
+    # Performance Score values (0-500, on the scoreboard since patch 13.06) that each send a check, per agent, when
+    # you finish a match at or above them. Rough guide: around 250 is an average game, 350+ is a standout one.
+    # Only modes with a Performance Score count (Competitive, Unrated, Swiftplay and Premier). The score comes from
+    # Riot's official match data, so these checks arrive once Riot publishes the match.
+    [250, 350]
+
+  excluded_stats:
+    # Checks for these stats will only ever contain filler, so you never *need* them to finish.
+    # Valid values: Kills, Assists, Trades, Clutches, Aces, 3Ks, K/D, Wins, Performance
+    ['Aces']
+
+  allowed_queues:
+    # Game modes whose matches count towards checks.
+    # Valid values: Competitive, Unrated, Swiftplay, Spike Rush, Premier, Deathmatch, Team Deathmatch,
+    # Escalation, Replication, Skirmish, Custom Games, Other Modes
+    # Multi-kills, trades and clutches only exist in round-based modes. Modes where everyone plays a generic
+    # character (e.g. Gauntlet / Ability Draft) never count, since there is no agent to credit.
+    ['Unrated', 'Spike Rush', 'Premier', 'Competitive', 'Swiftplay']
+
+  trade_window:
+    # How many seconds after a teammate dies you have to kill their killer for it to count as a trade.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 10
+    5: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-10: 0 # random value between 1 and 10
+
+  ########
+  # Goal #
+  ########
+  radianite_count:
+    # How many Radianite Crystals are shuffled into the item pool. Collect enough of them to win.
+    # Lowered automatically if the world doesn't have enough checks to hold them.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    15: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  radianite_required:
+    # Percentage of the Radianite Crystals you need to collect to win.
+    #
+    # You can define additional values between the minimum and maximum values.
+    # Minimum value is 1
+    # Maximum value is 100
+    80: 50
+    random: 0
+    random-low: 0 # random value weighted towards lower values
+    random-high: 0 # random value weighted towards higher values
+    random-range-1-100: 0 # random value between 1 and 100
+
+  ###########################
+  # Item & Location Options #
+  ###########################
+  local_items:
+    # Forces these items to be in their native world.
+    []
+
+  non_local_items:
+    # Forces these items to be outside their native world.
+    []
+
+  start_inventory:
+    # Start with the specified amount of these items. Example: {Bomb: 1, Arrow: 3}
+    {}
+
+  start_inventory_from_pool:
+    # Start with the specified amount of these items and don't place them in the world. Example: {Bomb: 1, Arrow: 3}
+    # 
+    # The game decides what the replacement items will be.
+    {}
+
+  start_hints:
+    # Start with these item's locations prefilled into the ``!hint`` command.
+    []
+
+  start_location_hints:
+    # Start with these locations and their item prefilled into the ``!hint`` command.
+    []
+
+  exclude_locations:
+    # Prevent these locations from having an important item.
+    []
+
+  priority_locations:
+    # Prevent these locations from having an unimportant item.
+    []
+
+  item_links:
+    # Share part of your item pool with other players.
+    []
+
+  plando_items:
+    # Generic items plando.
+    []

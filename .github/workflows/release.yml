@@ -1,0 +1,84 @@
+# Publishes a GitHub release, tagged v<version>, for every world version.
+#
+# - Bump "world_version" in valorant/archipelago.json, add patchnotes/<version>.md and push to main: the release and
+#   its tag are created automatically.
+# - Or push a tag yourself (git tag v0.6.2 && git push origin v0.6.2); it must match the world version.
+#
+# Versions that already have a release are skipped, so re-running is harmless.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [valorant/archipelago.json]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read the world version
+        id: version
+        run: |
+          version=$(python -c "import json; print(json.load(open('valorant/archipelago.json'))['world_version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match the world version ($version) in valorant/archipelago.json."
+            exit 1
+          fi
+
+      - name: Skip versions that are already released
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::$TAG is already released."
+            echo "released=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build valorant.apworld
+        if: steps.existing.outputs.released == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ ! -f "patchnotes/$VERSION.md" ]; then
+            echo "::error::Add patchnotes/$VERSION.md before releasing $VERSION."
+            exit 1
+          fi
+          python build_apworld.py
+          # The release title already names the version, so drop the patch note's own heading.
+          sed '1{/^# /d}' "patchnotes/$VERSION.md" > release-notes.md
+
+      - name: Create the release
+        if: steps.existing.outputs.released == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            "valorant.apworld" \
+            "Valorant.yaml#Valorant.yaml (example options)" \
+            --title "VALORANT Archipelago $VERSION" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
