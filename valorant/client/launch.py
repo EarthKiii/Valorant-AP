@@ -29,8 +29,8 @@ def launch_valorant_client(*args: Sequence[str]) -> None:
 
     parser = get_base_parser(description="Archipelago client for VALORANT.")
     parser.add_argument("--name", default=None, help="Slot name to connect as.")
-    parser.add_argument("--companion-port", "--bridge-port", dest="companion_port", type=int,
-                        default=DEFAULT_COMPANION_PORT, help="Local port the companion app connects to.")
+    parser.add_argument("--companion-port", type=int, default=DEFAULT_COMPANION_PORT,
+                        help="Local port the companion app connects to.")
     parser.add_argument("url", nargs="?", help="Archipelago connection url")
     launch_args = handle_url_arg(parser.parse_args(args), parser)
 

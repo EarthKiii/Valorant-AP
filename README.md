@@ -78,15 +78,19 @@ Agents and weapons are listed in `valorant/data.py` with their Riot UUIDs from
 
 ### Releasing
 
-Every world version gets a GitHub release tagged `v<version>`, with `valorant.apworld` and the example
-`Valorant.yaml` attached ([workflow](.github/workflows/release.yml)):
+Every world version gets a GitHub release tagged `v<version>`, with `valorant.apworld`, the example `Valorant.yaml`
+and the companion's Windows setup (`VALORANT-Companion-Setup.exe`) attached ([workflow](.github/workflows/release.yml)):
 
 1. Bump `world_version` in `valorant/archipelago.json`.
 2. Add `patchnotes/<version>.md`; it becomes the release's description.
-3. Push to `main`. The workflow builds the `.apworld`, creates the tag and publishes the release.
+3. Push to `main`. The workflow builds the `.apworld` and the companion setup on Windows, creates the tag and
+   publishes the release.
 
-Pushing a tag yourself (`git tag v0.6.2` then `git push origin v0.6.2`) works too, as long as it matches the world
+Pushing a tag yourself (`git tag v0.6.3` then `git push origin v0.6.3`) works too, as long as it matches the world
 version. Versions that already have a release are skipped.
+
+The latest companion setup is always at
+`https://github.com/EarthKiii/Valorant-AP/releases/latest/download/VALORANT-Companion-Setup.exe`.
 
 ## Caveats
 

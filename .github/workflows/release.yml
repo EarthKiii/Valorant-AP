@@ -1,10 +1,12 @@
-# Publishes a GitHub release, tagged v<version>, for every world version.
+# Publishes a GitHub release, tagged v<version>, for every world version, with valorant.apworld, the example
+# Valorant.yaml and the companion's Windows setup (VALORANT-Companion-Setup.exe) attached.
 #
 # - Bump "world_version" in valorant/archipelago.json, add patchnotes/<version>.md and push to main: the release and
 #   its tag are created automatically.
-# - Or push a tag yourself (git tag v0.6.2 && git push origin v0.6.2); it must match the world version.
+# - Or push a tag yourself (git tag v0.6.3 && git push origin v0.6.3); it must match the world version.
 #
-# Versions that already have a release are skipped, so re-running is harmless.
+# Versions that already have a release are skipped, so re-running is harmless. It runs on Windows because the
+# companion's setup is built with the C# compiler that ships with Windows.
 
 name: Release
 
@@ -24,7 +26,10 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -32,10 +37,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: companion/package-lock.json
+
       - name: Read the world version
         id: version
         run: |
-          version=$(python -c "import json; print(json.load(open('valorant/archipelago.json'))['world_version'])")
+          version=$(python -c "import json, sys; sys.stdout.write(json.load(open('valorant/archipelago.json'))['world_version'])")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
@@ -66,8 +77,33 @@ jobs:
             exit 1
           fi
           python build_apworld.py
+
+      - name: Build the companion setup
+        if: steps.existing.outputs.released == 'false'
+        working-directory: companion
+        run: |
+          npm ci
+          npm run sfx
+          cp "dist/VALORANT Companion Setup.exe" ../VALORANT-Companion-Setup.exe
+
+      - name: Write the release notes
+        if: steps.existing.outputs.released == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
           # The release title already names the version, so drop the patch note's own heading.
           sed '1{/^# /d}' "patchnotes/$VERSION.md" > release-notes.md
+          cat >> release-notes.md << 'EOF'
+
+          ## Downloads
+
+          - **valorant.apworld**: the Archipelago world and its client. Double-click it, or use **Install APWorld** in
+            the Archipelago Launcher.
+          - **Valorant.yaml**: example options file.
+          - **VALORANT-Companion-Setup.exe**: the optional companion app for Windows (live stats, progress window and
+            in-game agent-select overlay). It installs or updates the companion and keeps your settings. You need your
+            own Overwolf developer credentials. It isn't signed, so Windows SmartScreen may warn on the first run.
+          EOF
 
       - name: Create the release
         if: steps.existing.outputs.released == 'false'
@@ -79,6 +115,7 @@ jobs:
           gh release create "$TAG" \
             "valorant.apworld" \
             "Valorant.yaml#Valorant.yaml (example options)" \
+            "VALORANT-Companion-Setup.exe#VALORANT Companion Setup (Windows)" \
             --title "VALORANT Archipelago $VERSION" \
             --notes-file release-notes.md \
             --target "$GITHUB_SHA"

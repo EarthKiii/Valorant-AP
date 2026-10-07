@@ -102,6 +102,27 @@ folder to yourself.
 - The shortcut stores the folder's full path. If you move the folder, use `Start VALORANT Companion.cmd` inside it, or
   pack again.
 
-It isn't a single `.exe` on purpose: Overwolf only enables dev mode, and with it live game events, for apps that
-aren't packaged. A packaged build would need Overwolf's approval and signing, and Overwolf doesn't approve private helper apps
-like this one.
+## Setup exe
+
+```powershell
+npm run sfx
+```
+
+This packs the companion and wraps it in one self-extracting file, `dist/VALORANT Companion Setup.exe` (about
+145 MB), built with the C# compiler that ships with Windows. Running it:
+
+- installs to `%LOCALAPPDATA%\Programs\VALORANT Companion` (no admin rights needed) and creates shortcuts on the
+  Desktop and in the Start Menu;
+- updates an existing install in place: the old files are replaced, but `app\.env` (settings and credentials) is
+  kept. If the companion is running, it asks you to close it first;
+- opens `app\.env` in Notepad if it has no Overwolf credentials yet, then offers to start the companion.
+
+It never contains your credentials: your `app\.env` is swapped for the blank `.env.example`, so the file is safe to
+share. Each person needs their own Overwolf developer credentials. It isn't signed, so Windows SmartScreen may warn
+on the first run (**More info** → **Run anyway**).
+
+`/dir=<folder>` installs somewhere else, and `/quiet` skips every dialog, shortcut and launch.
+
+The app itself stays unpackaged on purpose; the setup just extracts it. Overwolf only enables dev mode, and with it
+live game events, for apps that aren't packaged. A packaged build would need Overwolf's approval and signing, and
+Overwolf doesn't approve private helper apps like this one.

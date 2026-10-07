@@ -15,7 +15,8 @@
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "start": "node scripts/build.mjs && node start.js",
-    "pack": "node scripts/pack.js"
+    "pack": "node scripts/pack.js",
+    "sfx": "node scripts/pack.js && node scripts/sfx.js"
   },
   "devDependencies": {
     "@overwolf/ow-electron": "^42.11.4",

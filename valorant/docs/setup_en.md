@@ -36,17 +36,17 @@ detection fails, set it with `/region na|eu|ap|kr|latam|br`.
 
 ### Client commands
 
-| Command            | What it does                                                        |
-|--------------------|---------------------------------------------------------------------|
-| `/valorant`        | Riot Client, current match and companion app status, goal progress.   |
-| `/progress [agent]`| Your current numbers and the next threshold for every stat.         |
-| `/unlocks`         | Which of this world's agents and weapons you've unlocked.           |
-| `/shop`            | Your Kingdom Credits, rental prices and rented weapons.             |
-| `/rent <weapon>`   | Rent a locked weapon for your next match (also in the Shop tab).    |
-| `/refund <weapon>` | Cancel a rental you haven't used yet.                               |
-| `/sync`            | Check your recent match history right now.                          |
-| `/region <region>` | Override the auto-detected region.                                  |
-| `/sounds`          | Toggle sound alerts.                                                |
+| Command             | What it does                                                        |
+|---------------------|---------------------------------------------------------------------|
+| `/valorant`         | Riot Client, current match and companion app status, goal progress. |
+| `/progress [agent]` | Your current numbers and the next threshold for every stat.         |
+| `/unlocks`          | Which of this world's agents and weapons you've unlocked.           |
+| `/shop`             | Your Kingdom Credits, rental prices and rented weapons.             |
+| `/rent <weapon>`    | Rent a locked weapon for your next match (also in the Shop tab).    |
+| `/refund <weapon>`  | Cancel a rental you haven't used yet.                               |
+| `/sync`             | Check your recent match history right now.                          |
+| `/region <region>`  | Override the auto-detected region.                                  |
+| `/sounds`           | Toggle sound alerts.                                                |
 
 ## Optional: the companion app
 
@@ -79,6 +79,11 @@ If you changed the client's port with `--companion-port`, add `VALORANT_AP_PORT=
 
 To start it with a double-click instead, run `npm run pack` once: it builds a self-contained copy in
 `companion/dist/VALORANT Companion/` with a **VALORANT Companion** shortcut (see `companion/README.md`).
+
+To install it without Node.js (on another PC, or for a friend), run `npm run sfx`: it builds
+`companion/dist/VALORANT Companion Setup.exe`, a single file that installs or updates the companion with Desktop and
+Start Menu shortcuts. It contains no credentials, so it's safe to share; each person adds their own Overwolf developer
+credentials when the setup opens the settings file.
 
 ## Notes
 
